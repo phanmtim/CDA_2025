@@ -1,9 +1,8 @@
 # Re-import necessary libraries and reprocess the CSV after the session reset
 import pandas as pd
-import json
 
 
-def reconstruct_orderbook_every_tick_with_orders(df, top_n=50):
+def reconstruct_orderbook_every_tick_with_orders(df: pd.DataFrame, top_n: int = 50):
     current_bids = {}  # price: (size, number_of_orders)
     current_asks = {}
     orderbook_history = {}
@@ -25,11 +24,11 @@ def reconstruct_orderbook_every_tick_with_orders(df, top_n=50):
             else:
                 book[price] = (size, num_orders)
 
-        # 排序 + 擷取 top_n
+        # sort + take top_n
         bids_sorted = sorted(current_bids.items(), reverse=True)[:top_n]
         asks_sorted = sorted(current_asks.items())[:top_n]
 
-        # 整理為 dict 格式
+        # format to dict
         snapshot = {
             "bids": {
                 price: {"size": s, "number_of_orders": n}
@@ -43,7 +42,7 @@ def reconstruct_orderbook_every_tick_with_orders(df, top_n=50):
 
         orderbook_history[ts] = snapshot
 
-        # 加入 csv rows
+        # add to csv rows
         for price, data in bids_sorted:
             csv_rows.append([ts, "bid", price, data[0], data[1]])
         for price, data in asks_sorted:

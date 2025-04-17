@@ -1,13 +1,13 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 讀取原始資料
+# read original data
 df = pd.read_csv("data/reconstructed_orderbook_small.csv")
 
 
 def plot_orderbook_over_time(df):
 
-    # 先計算 mid price
+    # calculate mid price
     def extract_mid_prices(df):
         grouped = df.groupby("timestamp")
         mid_prices = []
@@ -29,13 +29,13 @@ def plot_orderbook_over_time(df):
 
     mid_df = extract_mid_prices(df)
 
-    # 合併 mid price 回到原始資料，方便畫圖
+    # merge mid price back to original data, for plotting
     df = df.merge(mid_df, on="timestamp", how="inner")
 
-    # 畫圖
+    # plot
     plt.figure(figsize=(14, 7))
 
-    # 買單點點
+    # bid points
     bid_df = df[df["side"] == "bid"]
     plt.scatter(
         bid_df["timestamp"],
@@ -46,7 +46,7 @@ def plot_orderbook_over_time(df):
         label="Bid Orders",
     )
 
-    # 賣單點點
+    # ask points
     ask_df = df[df["side"] == "ask"]
     plt.scatter(
         ask_df["timestamp"],
@@ -57,7 +57,7 @@ def plot_orderbook_over_time(df):
         label="Ask Orders",
     )
 
-    # Mid price 線
+    # Mid price line
     plt.plot(
         mid_df["timestamp"],
         mid_df["mid_price"],
@@ -66,7 +66,7 @@ def plot_orderbook_over_time(df):
         label="Mid Price",
     )
 
-    # 標題與圖例
+    # title and legend
     plt.title("Orderbook Price Levels Over Time")
     plt.xlabel("Timestamp")
     plt.ylabel("Price")

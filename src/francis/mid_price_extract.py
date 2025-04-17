@@ -29,7 +29,7 @@ def extract_mid_prices(csv_path):
 
 # usage
 mid_df = extract_mid_prices("data/reconstructed_orderbook_small.csv")
-mid_df.to_csv("data/mid_price_series_small.csv", index=False)
+mid_df.to_csv("data/mid_price_small.csv", index=False)
 
 # plot the chart
 import matplotlib.pyplot as plt

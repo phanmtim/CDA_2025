@@ -1,2 +1,8 @@
 # ignore all files in data folder
 data/*
+
+# ignore .pyc file which is the compiled version of the python file
+*.pyc
+
+
+

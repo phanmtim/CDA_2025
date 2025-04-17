@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # read original data
-df = pd.read_csv("data/reconstructed_orderbook_small.csv")
+df = pd.read_csv("data/orderbook_data.csv")
 
 
 def plot_orderbook_over_time(df):

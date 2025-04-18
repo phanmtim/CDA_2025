@@ -2,16 +2,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def loadReconstructedOrderbook(filePath: str) -> pd.DataFrame:
+def loadOrderbookCsv(filePath: str) -> pd.DataFrame:
     """
-    Load a per-second reconstructed orderbook CSV (reconstructed_orderbook_small).
+    Load per-minute Bitcoin orderbook CSV.
 
     Expects columns: ['timestamp','bid_orders','ask_orders','best_bid','best_ask','mid_price'].
-    Sets 'timestamp' as a DatetimeIndex.
-
-    Args:
-        filePath: Path to the reconstructed CSV file.
-
     Returns:
         DataFrame indexed by timestamp.
     """
@@ -19,8 +14,8 @@ def loadReconstructedOrderbook(filePath: str) -> pd.DataFrame:
         filePath,
         parse_dates=['timestamp'],
         dtype={
-            'bid_orders': int,
-            'ask_orders': int,
+            'bid_orders': float,
+            'ask_orders': float,
             'best_bid': float,
             'best_ask': float,
             'mid_price': float
@@ -30,12 +25,12 @@ def loadReconstructedOrderbook(filePath: str) -> pd.DataFrame:
     return df
 
 
-def plotMidPrice(book: pd.DataFrame, figsize: tuple = (12, 6)):
+def plotMidPrice(df: pd.DataFrame, figsize: tuple = (12, 6)):
     """
-    Plot mid price over time from reconstructed orderbook.
+    Plot mid price over time.
     """
     plt.figure(figsize=figsize)
-    plt.plot(book.index, book['mid_price'], label='Mid Price')
+    plt.plot(df.index, df['mid_price'], label='Mid Price')
     plt.xlabel('Time')
     plt.ylabel('Mid Price')
     plt.title('Bitcoin Mid Price Over Time')
@@ -43,13 +38,13 @@ def plotMidPrice(book: pd.DataFrame, figsize: tuple = (12, 6)):
     plt.show()
 
 
-def plotOrderCounts(book: pd.DataFrame, figsize: tuple = (12, 6)):
+def plotOrderCounts(df: pd.DataFrame, figsize: tuple = (12, 6)):
     """
     Plot bid and ask order counts over time.
     """
     plt.figure(figsize=figsize)
-    plt.plot(book.index, book['bid_orders'], label='Bid Orders')
-    plt.plot(book.index, book['ask_orders'], label='Ask Orders')
+    plt.plot(df.index, df['bid_orders'], label='Bid Orders')
+    plt.plot(df.index, df['ask_orders'], label='Ask Orders')
     plt.xlabel('Time')
     plt.ylabel('Number of Orders')
     plt.title('Bid vs Ask Order Counts Over Time')
@@ -58,13 +53,13 @@ def plotOrderCounts(book: pd.DataFrame, figsize: tuple = (12, 6)):
     plt.show()
 
 
-def plotSpread(book: pd.DataFrame, figsize: tuple = (12, 6)):
+def plotSpread(df: pd.DataFrame, figsize: tuple = (12, 6)):
     """
-    Plot bid-ask spread over time using best_bid and best_ask.
+    Plot bid-ask spread over time.
     """
-    spread = book['best_ask'] - book['best_bid']
+    spread = df['best_ask'] - df['best_bid']
     plt.figure(figsize=figsize)
-    plt.plot(book.index, spread)
+    plt.plot(df.index, spread)
     plt.xlabel('Time')
     plt.ylabel('Spread')
     plt.title('Bid-Ask Spread Over Time')
@@ -72,91 +67,56 @@ def plotSpread(book: pd.DataFrame, figsize: tuple = (12, 6)):
     plt.show()
 
 
-def detectFlashCrashes(
-    book: pd.DataFrame,
-    thresholdRangePct: float = 0.05
+def detectFlashCrashesHourly(
+    df: pd.DataFrame,
+    thresholdPct: float = 0.05,
+    windowHours: int = 1
 ) -> pd.DataFrame:
     """
-    Detect crashes defined as drops >= thresholdRangePct * (max(mid_price) - min(mid_price))
-    between consecutive seconds.
-
-    Args:
-        book: DataFrame from loadReconstructedOrderbook, indexed by timestamp.
-        thresholdRangePct: Fraction of full mid_price range to flag as crash.
+    Detect flash crashes defined as a drop ≥ thresholdPct of mid_price
+    within the last windowHours hours.
 
     Returns:
-        DataFrame of crash events with ['startTime','endTime','drop_amount'].
+        DataFrame of crash events with columns ['startTime','endTime','drop_pct','duration'].
     """
-    df = book.copy()
-    # compute previous-second mid_price
-    df['prev_mid'] = df['mid_price'].shift(1)
-    df = df.dropna(subset=['prev_mid'])
-    # absolute threshold based on full range
-    full_range = df['mid_price'].max() - df['mid_price'].min()
-    threshold = thresholdRangePct * full_range
-    # compute drop amount
-    df['drop_amount'] = df['prev_mid'] - df['mid_price']
-    # select events
-    crashes = df[df['drop_amount'] >= threshold].copy()
-    # assign start and end times
-    crashes['startTime'] = crashes.index.to_series().shift(1)
-    crashes['endTime'] = crashes.index
-    # format result
-    result = crashes.reset_index()[['startTime', 'endTime', 'drop_amount']]
-    return result
+    d = df.copy()
+    # rolling max of mid_price over the past windowHours
+    d['rolling_max'] = d['mid_price'].rolling(f'{windowHours}H', min_periods=1).max()
+    d['drop_pct'] = (d['rolling_max'] - d['mid_price']) / d['rolling_max']
+    # flag first crossings
+    d['above'] = d['drop_pct'] >= thresholdPct
+    d['prev_above'] = d['above'].shift(1, fill_value=False)
+    events = d[d['above'] & (~d['prev_above'])]
 
-
-def detectFlashCrashesRolling(
-    book: pd.DataFrame,
-    thresholdRangePct: float = 0.05,
-    windowSeconds: int = 5
-) -> pd.DataFrame:
-    """
-    Detect crashes defined as drops >= thresholdRangePct * (max(mid_price) - min(mid_price))
-    over any windowSeconds.
-
-    Args:
-        book: DataFrame from loadReconstructedOrderbook, indexed by timestamp.
-        thresholdRangePct: Fraction of full mid_price range to flag as crash.
-        windowSeconds: Number of seconds for rolling window.
-
-    Returns:
-        DataFrame of crash events with ['startTime','endTime','drop_amount'].
-    """
-    # compute absolute threshold
-    full_range = book['mid_price'].max() - book['mid_price'].min()
-    threshold = thresholdRangePct * full_range
-
-    df = book.copy()
-    # rolling_max of the last windowSeconds
-    df['rolling_max'] = (
-        df['mid_price']
-        .rolling(window=windowSeconds, min_periods=1)
-        .max()
-    )
-    df['drop_amount'] = df['rolling_max'] - df['mid_price']
-    crashes = df[df['drop_amount'] >= threshold].copy()
-
-    # label start/end times
-    crashes['endTime'] = crashes.index
-    crashes['startTime'] = crashes.index - pd.Timedelta(seconds=windowSeconds)
-    return crashes.reset_index()[['startTime', 'endTime', 'drop_amount']]
+    records = []
+    for endTime, row in events.iterrows():
+        window_start = endTime - pd.Timedelta(hours=windowHours)
+        window_slice = d.loc[window_start:endTime]
+        startTime = window_slice['mid_price'].idxmax()
+        duration = endTime - startTime
+        records.append({
+            'startTime': startTime,
+            'endTime': endTime,
+            'drop_pct': row['drop_pct'],
+            'duration': duration
+        })
+    return pd.DataFrame(records)
 
 
 def plotFlashCrashes(
-    book: pd.DataFrame,
+    df: pd.DataFrame,
     crashes: pd.DataFrame,
     figsize: tuple = (12, 6)
 ):
     """
-    Plot mid price with highlighted crash intervals.
+    Plot mid_price with highlighted crash intervals.
     """
     plt.figure(figsize=figsize)
-    plt.plot(book.index, book['mid_price'], label='Mid Price')
+    plt.plot(df.index, df['mid_price'], label='Mid Price')
     for _, row in crashes.iterrows():
         plt.axvspan(row['startTime'], row['endTime'], alpha=0.3, color='red')
     plt.xlabel('Time')
     plt.ylabel('Mid Price')
-    plt.title('Defined Flash Crashes in Bitcoin')
+    plt.title('Flash Crashes in Bitcoin')
     plt.tight_layout()
     plt.show()
